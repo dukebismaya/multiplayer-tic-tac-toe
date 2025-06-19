@@ -1,22 +1,36 @@
 {
   "name": "multiplayer-tic-tac-toe",
   "version": "2.0.0",
-  "description": "A full-stack real-time multiplayer Tic Tac Toe game with modern UI and features.",
-  "main": "frontend/index.html",
+  "description": "A full-stack real-time multiplayer Tic Tac Toe game with Flask-SocketIO backend and vanilla JavaScript frontend.",
+  "main": "backend/app.py",
   "scripts": {
-    "start": "live-server frontend --port=3000",
-    "dev": "live-server frontend --port=3000 --watch=frontend",
-    "build": "echo 'No build step required for static frontend.'",
-    "server": "cd backend && python app.py",
-    "install-backend": "cd backend && pip install -r requirements.txt"
+    "start": "cd backend && python app.py",
+    "dev": "cd backend && python app.py",
+    "dev-frontend": "live-server frontend --port=3000 --watch=frontend",
+    "install-deps": "cd backend && pip install -r requirements.txt",
+    "build": "echo 'Static frontend - no build required'"
   },
-  "dependencies": {
-    "socket.io-client": "^4.7.2"
+  "engines": {
+    "node": ">=14.0.0",
+    "python": ">=3.8.0"
   },
   "devDependencies": {
     "live-server": "^1.2.2"
   },
-  "keywords": ["tic-tac-toe", "multiplayer", "socketio", "flask", "game"],
+  "keywords": [
+    "tic-tac-toe", 
+    "multiplayer", 
+    "socketio", 
+    "flask", 
+    "python", 
+    "game", 
+    "websockets"
+  ],
   "author": "Bismaya Jyoti Dalei",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dukebismaya/multiplayer-tic-tac-toe.git"
+  },
+  "homepage": "https://github.com/dukebismaya/multiplayer-tic-tac-toe#readme"
 }
