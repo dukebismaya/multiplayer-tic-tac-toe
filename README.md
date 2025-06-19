@@ -62,11 +62,11 @@ python app.py
 
 #### Frontend Setup
 
-# Install dependencies
+#### Install dependencies
 ```bash
 npm install
 ```
-# Start development server
+##### Start development server
 ```bash
 npm run dev
 ```
@@ -115,7 +115,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Bismaya Jyoti Dalei**
 
-- GitHub: [@ydukebismaya](https://github.com/dukebismaya)
+- GitHub: [@dukebismaya](https://github.com/dukebismaya)
 - Email: bismayajd@gmail.com
 
 ## 🙏 Acknowledgments
