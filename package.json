@@ -1,0 +1,22 @@
+{
+  "name": "multiplayer-tic-tac-toe",
+  "version": "2.0.0",
+  "description": "A full-stack real-time multiplayer Tic Tac Toe game with modern UI and features.",
+  "main": "frontend/index.html",
+  "scripts": {
+    "start": "live-server frontend --port=3000",
+    "dev": "live-server frontend --port=3000 --watch=frontend",
+    "build": "echo 'No build step required for static frontend.'",
+    "server": "cd backend && python app.py",
+    "install-backend": "cd backend && pip install -r requirements.txt"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.2"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  },
+  "keywords": ["tic-tac-toe", "multiplayer", "socketio", "flask", "game"],
+  "author": "Bismaya Jyoti Dalei",
+  "license": "MIT"
+}

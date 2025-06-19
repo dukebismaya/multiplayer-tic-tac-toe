@@ -1,0 +1,288 @@
+<!-- (C) Bismaya Jyoti Dalei, All rights reserved. -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Tic Tac Toe</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/icon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icon/favicon-16x16.png">
+    <link rel="manifest" href="assets/icon/site.webmanifest">
+</head>
+<body>
+    <div class="app-container" id="app">
+        <!-- Theme Toggle -->
+        <div class="theme-toggle">
+            <button id="themeToggle" class="theme-btn">
+                <i class="fas fa-moon"></i>
+            </button>
+            <button id="soundToggle" class="theme-btn" style="margin-left: 10px;">
+                <i class="fas fa-volume-up"></i>
+            </button>
+        </div>
+
+        <!-- Main Menu Screen -->
+        <div class="screen active" id="menuScreen">
+            <div class="menu-container">
+                <div class="logo-section">
+                    <h1 class="game-title">
+                        <span class="title-icon">⚡</span>
+                        Tic Tac Toe
+                        <span class="title-subtitle">Multiplayer</span>
+                    </h1>
+                </div>
+
+                <div class="menu-options">
+                    <button class="menu-btn primary" id="createRoomBtn">
+                        <i class="fas fa-plus"></i>
+                        Create Room
+                    </button>
+                    <button class="menu-btn secondary" id="joinRoomBtn">
+                        <i class="fas fa-sign-in-alt"></i>
+                        Join Room
+                    </button>
+                    <button class="menu-btn tertiary" id="browseRoomsBtn">
+                        <i class="fas fa-list"></i>
+                        Browse Rooms
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Room Screen -->
+        <div class="screen" id="createRoomScreen">
+            <div class="form-container">
+                <button class="back-btn" id="backFromCreate">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                
+                <h2 class="screen-title">Create New Room</h2>
+                
+                <form class="create-room-form" id="createRoomForm">
+                    <div class="input-group">
+                        <label for="playerName">Your Name</label>
+                        <input type="text" id="playerName" placeholder="Enter your name" maxlength="20" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="gridSize">Grid Size</label>
+                        <div class="grid-size-selector">
+                            <input type="range" id="gridSizeSlider" min="3" max="10" value="3" class="slider">
+                            <div class="grid-size-display">
+                                <span id="gridSizeValue">3</span>×<span id="gridSizeValue2">3</span>
+                            </div>
+                        </div>
+                        <div class="grid-preview" id="gridPreview"></div>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-rocket"></i>
+                        Create Room
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Join Room Screen -->
+        <div class="screen" id="joinRoomScreen">
+            <div class="form-container">
+                <button class="back-btn" id="backFromJoin">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                
+                <h2 class="screen-title">Join Room</h2>
+                
+                <form class="join-room-form" id="joinRoomForm">
+                    <div class="input-group">
+                        <label for="joinPlayerName">Your Name</label>
+                        <input type="text" id="joinPlayerName" placeholder="Enter your name" maxlength="20" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="roomCode">Room Code</label>
+                        <input type="text" id="roomCode" placeholder="Enter room code" maxlength="8" required>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-sign-in-alt"></i>
+                        Join Room
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Browse Rooms Screen -->
+        <div class="screen" id="browseRoomsScreen">
+            <div class="browse-container">
+                <button class="back-btn" id="backFromBrowse">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                
+                <h2 class="screen-title">Available Rooms</h2>
+                
+                <div class="input-group">
+                    <label for="browsePlayerName">Your Name</label>
+                    <input type="text" id="browsePlayerName" placeholder="Enter your name" maxlength="20">
+                </div>
+                
+                <div class="rooms-list" id="roomsList">
+                    <div class="no-rooms">
+                        <i class="fas fa-inbox"></i>
+                        <p>No rooms available</p>
+                    </div>
+                </div>
+                
+                <button class="refresh-btn" id="refreshRooms">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Waiting Room Screen -->
+        <div class="screen" id="waitingScreen">
+            <div class="waiting-container">
+                <div class="waiting-content">
+                    <div class="loading-animation">
+                        <div class="spinner"></div>
+                    </div>
+                    
+                    <h2 class="waiting-title">Waiting for Player</h2>
+                    <p class="room-info">
+                        Room Code: <span class="room-code" id="currentRoomCode"></span>
+                    </p>
+                    <p class="grid-info">
+                        Grid Size: <span id="currentGridSize"></span>
+                    </p>
+                    
+                    <button class="cancel-btn" id="cancelWaiting">
+                        <i class="fas fa-times"></i>
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div class="screen" id="gameScreen">
+            <div class="game-container">
+                <div class="game-header">
+                    <div class="player-info" id="player1Info">
+                        <div class="player-avatar">
+                            <span class="player-symbol">X</span>
+                        </div>
+                        <div class="player-details">
+                            <span class="player-name">Player 1</span>
+                            <span class="player-status">Your Turn</span>
+                        </div>
+                    </div>
+                    
+                    <div class="game-status">
+                        <div class="room-code-display">
+                            Room: <span id="gameRoomCode"></span>
+                        </div>
+                        <div class="turn-indicator" id="turnIndicator">
+                            <span class="turn-text">Your Turn</span>
+                        </div>
+                    </div>
+                    
+                    <div class="player-info" id="player2Info">
+                        <div class="player-details">
+                            <span class="player-name">Player 2</span>
+                            <span class="player-status">Waiting</span>
+                        </div>
+                        <div class="player-avatar">
+                            <span class="player-symbol">O</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scoreboard -->
+                <div class="scoreboard" id="scoreboard" style="display: none;">
+                    <div class="scoreboard-header">
+                        <h3 id="matchCounter">Match 1</h3>
+                        <div class="session-leader" id="sessionLeader" style="display: none;">
+                            <i class="fas fa-crown"></i>
+                            You are leading!
+                        </div>
+                    </div>
+                    <div class="scores-container">
+                        <div class="score-item" id="playerScore">
+                            <!-- Player score will be populated by JS -->
+                        </div>
+                        <div class="score-vs">VS</div>
+                        <div class="score-item" id="opponentScore">
+                            <!-- Opponent score will be populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Game Board -->
+                <div class="game-board-container">
+                    <div class="game-board" id="gameBoard">
+                        <!-- Board cells will be generated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Game Controls -->
+                <div class="game-controls">
+                    <button class="control-btn secondary" id="leaveGameBtn">
+                        <i class="fas fa-door-open"></i>
+                        Leave Game
+                    </button>
+                    <button class="control-btn primary" id="restartGameBtn" style="display: none;">
+                        <i class="fas fa-redo"></i>
+                        Play Again
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div class="modal" id="gameOverModal">
+            <div class="modal-content">
+                <div class="game-result" id="gameResult">
+                    <div class="result-icon">🎉</div>
+                    <h3 class="result-title">You Win!</h3>
+                    <p class="result-message">Congratulations on your victory!</p>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="modal-btn primary" id="playAgainBtn">
+                        <i class="fas fa-redo"></i>
+                        Play Again
+                    </button>
+                    <button class="modal-btn secondary" id="backToMenuBtn">
+                        <i class="fas fa-home"></i>
+                        Main Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Container -->
+        <div class="notification-container" id="notifications"></div>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner">
+                <div class="spinner-ring"></div>
+                <p>Connecting...</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="app-footer">
+        <p>Created by <strong>Bismaya Jytoi Dalei</strong></p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="script.js"></script>
+
+</body>
+</html>
