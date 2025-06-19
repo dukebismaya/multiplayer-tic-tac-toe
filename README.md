@@ -73,7 +73,7 @@ npm run dev
 
 ### Production Deployment
 
-The app is ready for deployment on platforms like Render, Heroku, or Railway.
+Play it [here](https://multiplayer-tic-tac-toe-by-bismya.onrender.com)
 
 **Environment Variables:**
 - `PORT`: Server port (auto-set by hosting platform)
