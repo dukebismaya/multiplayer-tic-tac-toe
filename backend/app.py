@@ -10,8 +10,9 @@ from game_logic import GameManager
 import json
 import os
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-fallback-secret-key-here') # Change this to a secure key in production
+# Flask app configuration
+app = Flask(__name__, static_folder='../frontend', static_url_path='/')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-fallback-secret-key-here')
 
 # Python 3.13 compatibility
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -21,7 +22,14 @@ game_manager = GameManager()
 
 @app.route('/')
 def index():
-    return "Multiplayer Tic Tac Toe Server Running"
+    return app.send_static_file('index.html')
+
+@app.route('/<path:filename>')
+def static_files(filename):
+    try:
+        return app.send_static_file(filename)
+    except:
+        return app.send_static_file('index.html')
 
 @app.route('/health')
 def health_check():
@@ -179,5 +187,4 @@ def handle_leave_room(data):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
-    
     socketio.run(app, host='0.0.0.0', port=port, debug=debug)
