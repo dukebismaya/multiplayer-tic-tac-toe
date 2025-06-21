@@ -161,6 +161,63 @@ def handle_restart_game(data):
     else:
         emit('error', {'message': result['message']})
 
+@socketio.on('chat_message')
+def handle_chat_message(data):
+    room_id = data.get('room_id')
+    message = data.get('message', '').strip()
+    
+    if not room_id or not message:
+        emit('error', {'message': 'Invalid chat message'})
+        return
+    
+    # Get player info from game state
+    game = game_manager.games.get(room_id)
+    if not game or request.sid not in game.players:
+        emit('error', {'message': 'Not in this room'})
+        return
+    
+    player = game.players[request.sid]
+    
+    # Broadcast the message to all players in the room
+    emit('chat_message', {
+        'player_id': request.sid,
+        'player_name': player['name'],
+        'message': message,
+        'timestamp': time.time()
+    }, room=room_id)
+
+@socketio.on('typing')
+def handle_typing(data):
+    room_id = data.get('room_id')
+    
+    if not room_id:
+        return
+    
+    # Get player info from game state
+    game = game_manager.games.get(room_id)
+    if not game or request.sid not in game.players:
+        return
+    
+    player = game.players[request.sid]
+    
+    # Notify other players that this player is typing
+    emit('player_typing', {
+        'player_id': request.sid,
+        'player_name': player['name']
+    }, room=room_id, include_self=False)
+
+@socketio.on('stop_typing')
+def handle_stop_typing(data):
+    room_id = data.get('room_id')
+    
+    if not room_id:
+        return
+    
+    # Notify other players that this player stopped typing
+    emit('player_stopped_typing', {
+        'player_id': request.sid
+    }, room=room_id, include_self=False)
+
 @socketio.on('get_rooms')
 def handle_get_rooms():
     rooms_list = game_manager.get_available_rooms()

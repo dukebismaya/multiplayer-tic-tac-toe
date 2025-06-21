@@ -86,6 +86,8 @@ class TicTacToeGame {
         };
         this.theme = localStorage.getItem('theme') || 'light';
         this.audioManager = new AudioManager();
+        this.chatOpen = false;
+        this.unreadMessages = 0;
 
         this.showLoadingOverlay();
         this.initializeSocket();
@@ -188,6 +190,25 @@ class TicTacToeGame {
             this.updateGameBoard(data);
             this.updateTurnIndicator(data.current_turn);
             this.showNotification(`${data.player_name} played ${data.symbol}`, 'info', false);
+        });
+
+        // Chat listeners
+        this.socket.on('chat_message', (data) => {
+            this.addChatMessage(data);
+            
+            if (!this.chatOpen) {
+                this.unreadMessages++;
+                this.updateChatBadge();
+                this.audioManager.play('notification');
+            }
+        });
+
+        this.socket.on('player_typing', (data) => {
+            this.showTypingIndicator(data.player_name);
+        });
+
+        this.socket.on('player_stopped_typing', () => {
+            this.hideTypingIndicator();
         });
 
         this.socket.on('game_over', (data) => {
@@ -339,8 +360,171 @@ class TicTacToeGame {
             this.refreshRooms();
         });
 
+        // Chat event listeners
+        document.getElementById('chatFloatBtn').addEventListener('click', () => {
+            this.toggleChat();
+        });
+
+        document.getElementById('chatCloseBtn').addEventListener('click', () => {
+            this.closeChat();
+        });
+
+        document.getElementById('chatSendBtn').addEventListener('click', () => {
+            this.sendChatMessage();
+        });
+
+        document.getElementById('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.sendChatMessage();
+            }
+        });
+
+        // Typing indicators
+        let typingTimer;
+        document.getElementById('chatInput').addEventListener('input', () => {
+            if (this.playerInfo.roomId) {
+                this.socket.emit('typing', { room_id: this.playerInfo.roomId });
+                
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(() => {
+                    this.socket.emit('stop_typing', { room_id: this.playerInfo.roomId });
+                }, 1000);
+            }
+        });
+
+
         // Initialize grid size display
         this.updateGridSizeDisplay(3);
+    }
+
+
+    // Chat Methods
+    toggleChat() {
+        const chatPanel = document.getElementById('chatPanel');
+        const chatBtn = document.getElementById('chatFloatBtn');
+        
+        this.chatOpen = !this.chatOpen;
+        
+        if (this.chatOpen) {
+            chatPanel.classList.add('active');
+            chatBtn.style.transform = 'scale(0.9)';
+            this.unreadMessages = 0;
+            this.updateChatBadge();
+            
+            // Focus on input
+            setTimeout(() => {
+                document.getElementById('chatInput').focus();
+            }, 300);
+        } else {
+            chatPanel.classList.remove('active');
+            chatBtn.style.transform = 'scale(1)';
+        }
+    }
+
+    closeChat() {
+        this.chatOpen = false;
+        document.getElementById('chatPanel').classList.remove('active');
+        document.getElementById('chatFloatBtn').style.transform = 'scale(1)';
+    }
+
+    sendChatMessage() {
+        const input = document.getElementById('chatInput');
+        const message = input.value.trim();
+        
+        if (!message || !this.playerInfo.roomId) return;
+        
+        this.socket.emit('chat_message', {
+            room_id: this.playerInfo.roomId,
+            message: message
+        });
+        
+        input.value = '';
+        
+        // Stop typing indicator
+        this.socket.emit('stop_typing', { room_id: this.playerInfo.roomId });
+    }
+
+    addChatMessage(data) {
+        const chatMessages = document.getElementById('chatMessages');
+        const messageElement = document.createElement('div');
+        
+        // Remove welcome message if it exists
+        const welcomeMsg = chatMessages.querySelector('.chat-welcome');
+        if (welcomeMsg) {
+            welcomeMsg.remove();
+        }
+        
+        const isOwnMessage = data.player_id === this.playerInfo.id;
+        const isSystemMessage = data.type === 'system';
+        
+        if (isSystemMessage) {
+            messageElement.className = 'chat-message system';
+            messageElement.innerHTML = `<p class="chat-message-content">${data.message}</p>`;
+        } else {
+            messageElement.className = `chat-message ${isOwnMessage ? 'own' : 'other'}`;
+            
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageElement.innerHTML = `
+                <div class="chat-message-info">${isOwnMessage ? 'You' : data.player_name} • ${timestamp}</div>
+                <p class="chat-message-content">${this.escapeHtml(data.message)}</p>
+            `;
+        }
+        
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // Play sound for other player's messages
+        if (!isOwnMessage && !isSystemMessage) {
+            this.audioManager.play('notification');
+        }
+    }
+
+    showTypingIndicator(playerName) {
+        const chatMessages = document.getElementById('chatMessages');
+        
+        // Remove existing typing indicator
+        this.hideTypingIndicator();
+        
+        const typingElement = document.createElement('div');
+        typingElement.className = 'chat-typing-indicator';
+        typingElement.id = 'typingIndicator';
+        typingElement.textContent = `${playerName} is typing...`;
+        
+        chatMessages.appendChild(typingElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    hideTypingIndicator() {
+        const typingIndicator = document.getElementById('typingIndicator');
+        if (typingIndicator) {
+            typingIndicator.remove();
+        }
+    }
+
+    updateChatBadge() {
+        const badge = document.getElementById('chatBadge');
+        
+        if (this.unreadMessages > 0) {
+            badge.textContent = this.unreadMessages > 9 ? '9+' : this.unreadMessages;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Add system message when game events happen
+    addSystemMessage(message) {
+        this.addChatMessage({
+            type: 'system',
+            message: message
+        });
     }
 
     // Theme Management
@@ -501,6 +685,9 @@ class TicTacToeGame {
         this.updateScoreboard();
         this.updateTurnIndicator(this.gameState.current_turn);
         document.getElementById('gameRoomCode').textContent = this.playerInfo.roomId;
+        
+        this.addSystemMessage('Game started! Good luck! 🎮');
+        
         this.showScreen('gameScreen');
     }
 
@@ -654,8 +841,10 @@ class TicTacToeGame {
             // No specific sound for draw currently, maybe play a neutral sound (I'll use later after getting feedback)
         } else if (data.winner === this.playerInfo.symbol) {
             this.audioManager.play('win');
+            this.addSystemMessage('You won this round! 🏆');
         } else {
             this.audioManager.play('loss');
+            this.addSystemMessage('You lost this round. Better luck next time! 💪');
         }
 
         // Highlight winning line if exists
@@ -809,6 +998,19 @@ class TicTacToeGame {
             symbol: '',
             roomId: ''
         };
+        
+        // Reset chat
+        this.chatOpen = false;
+        this.unreadMessages = 0;
+        this.updateChatBadge();
+        this.closeChat();
+        document.getElementById('chatMessages').innerHTML = `
+            <div class="chat-welcome">
+                <i class="fas fa-hand-wave"></i>
+                <p>Chat with your opponent!</p>
+            </div>
+        `;
+        
         this.hideGameOverModal();
         this.showScreen('menuScreen');
     }
