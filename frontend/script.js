@@ -75,6 +75,7 @@ class AudioManager {
 
 class TicTacToeGame {
     constructor() {
+        this.debug = false;
         this.socket = null;
         this.gameState = null;
         this.currentScreen = 'menuScreen';
@@ -88,12 +89,86 @@ class TicTacToeGame {
         this.audioManager = new AudioManager();
         this.chatOpen = false;
         this.unreadMessages = 0;
+        this.opponentInfo = null;
+        this.recentEmojis = JSON.parse(localStorage.getItem('recentEmojis') || '[]');
+
+        this.chatSettings = JSON.parse(localStorage.getItem('chatSettings') || JSON.stringify({
+            soundEnabled: true,
+            enterToSend: true
+        }));
+        this.replyingTo = null;
 
         this.showLoadingOverlay();
         this.initializeSocket();
         this.setupEventListeners();
         this.applyTheme();
         this.showAudioPrompt();
+        this.initializeEmojis();
+
+        console.log('TicTacToeGame initialized');
+
+        setTimeout(() => {
+            this.checkElements();
+        }, 1000);
+    }
+
+    
+    debugLog(message, data = null) {
+        if (this.debug) {
+            console.log(`[DEBUG] ${message}`, data || '');
+        }
+    }
+
+    logPlayerInfo() {
+        console.log('=== PLAYER INFO DEBUG ===');
+        console.log('Socket ID:', this.socket?.id);
+        console.log('Player Info:', this.playerInfo);
+        console.log('Game State Players:', this.gameState?.players);
+
+        if (this.gameState?.players) {
+            const players = Object.values(this.gameState.players);
+            console.log('🔍 All players details:');
+            players.forEach((player, index) => {
+                const isCurrentPlayer = player.id === this.socket.id;
+                console.log(`Player ${index + 1}:`, {
+                    id: player.id,
+                    name: player.name,
+                    symbol: player.symbol,
+                    isCurrentPlayer: isCurrentPlayer,
+                    socketIdMatch: player.id === this.socket.id
+                });
+            });
+
+            const expectedOpponent = players.find(p => p.id !== this.socket.id);
+            console.log('🎯 Expected opponent should be:', expectedOpponent);
+        }
+        console.log('========================');
+    }
+
+
+    checkElements() {
+        const requiredElements = [
+            'chatFloatBtn', 'chatCloseBtn', 'chatSendBtn',
+            'emojiBtn', 'emojiToggle', 'chatSettings',
+            'attachBtn', 'chatInput', 'emojiPicker'
+        ];
+
+        const missingElements = [];
+
+        requiredElements.forEach(id => {
+            if (!document.getElementById(id)) {
+                missingElements.push(id);
+            }
+        });
+
+        if (missingElements.length > 0) {
+            console.error('Missing required elements:', missingElements);
+            this.showNotification('Some chat features may not work properly', 'warning');
+        } else {
+            console.log('All required elements found');
+        }
+
+        return missingElements.length === 0;
     }
 
     showAudioPrompt() {
@@ -116,10 +191,12 @@ class TicTacToeGame {
 
     setupSocketListeners() {
         this.socket.on('connect', () => {
-            console.log('Connected to server successfully');
+            console.log('🔌 Connected to server');
+            console.log('🆔 My Socket ID:', this.socket.id);
             this.hideLoadingOverlay();
             this.showScreen('menuScreen');
             this.showNotification('Connected to server!', 'success', false);
+            this.playerInfo.id = this.socket.id; // Store socket ID
         });
 
         this.socket.on('connect_error', (error) => {
@@ -142,7 +219,7 @@ class TicTacToeGame {
             console.log('Room created:', data);
             this.hideLoadingOverlay();
             this.playerInfo = {
-                ...this.playerInfo,
+                id: this.socket.id,
                 name: data.player_name,
                 symbol: data.symbol,
                 roomId: data.room_id
@@ -153,26 +230,55 @@ class TicTacToeGame {
         });
 
         this.socket.on('room_joined', (data) => {
-            console.log('Room joined:', data);
+            console.log('🏠 Room joined:', data);
+            console.log('🆔 My Socket ID at join:', this.socket.id);
+
             this.hideLoadingOverlay();
             this.playerInfo = {
-                ...this.playerInfo,
+                id: this.socket.id,
                 name: data.player_name,
                 symbol: data.symbol,
                 roomId: data.room_id
             };
             this.gameState = data.game_state;
+
+            console.log('🎮 Updated player info:', this.playerInfo);
+            console.log('🎮 Game state:', this.gameState);
+
             this.showNotification(`Joined room ${data.room_id}!`, 'success');
+
+            setTimeout(() => {
+                console.log('🔄 Updating opponent info after room join...');
+                this.updateOpponentInfo();
+            }, 500);
         });
 
         this.socket.on('player_joined', (data) => {
+            console.log('👥 Player joined:', data);
             this.showNotification(`${data.player_name} joined the game!`, 'info');
+
+            if (data.game_state) {
+                this.gameState = data.game_state;
+                console.log('🔄 Updated game state from player_joined:', this.gameState);
+            }
+
+            setTimeout(() => {
+                console.log('🔄 Updating opponent info after player joined...');
+                this.updateOpponentInfo();
+            }, 300);
         });
 
         this.socket.on('game_start', (gameState) => {
+            console.log('🎮 Game started with state:', gameState);
+
             this.gameState = gameState;
             this.showGameScreen();
             this.showNotification('Game started!', 'success');
+
+            setTimeout(() => {
+                console.log('🔄 Updating opponent info after game start...');
+                this.updateOpponentInfo();
+            }, 500);
         });
 
         this.socket.on('move_made', (data) => {
@@ -180,7 +286,6 @@ class TicTacToeGame {
                 this.gameState = data.game_state;
             }
 
-            // Play click sound based on symbol
             if (data.symbol === 'X') {
                 this.audioManager.play('click_x');
             } else {
@@ -194,21 +299,35 @@ class TicTacToeGame {
 
         // Chat listeners
         this.socket.on('chat_message', (data) => {
+            console.log('Received chat message:', data);
             this.addChatMessage(data);
-            
+
             if (!this.chatOpen) {
                 this.unreadMessages++;
                 this.updateChatBadge();
-                this.audioManager.play('notification');
+                this.showChatNotification(data);
+                if (this.chatSettings.soundEnabled) {
+                    this.audioManager.play('notification');
+                }
             }
         });
 
         this.socket.on('player_typing', (data) => {
+            console.log('Player typing:', data);
             this.showTypingIndicator(data.player_name);
         });
 
         this.socket.on('player_stopped_typing', () => {
+            console.log('Player stopped typing');
             this.hideTypingIndicator();
+        });
+
+        this.socket.on('message_reaction', (data) => {
+            this.addMessageReaction(data);
+        });
+
+        this.socket.on('player_status_update', (data) => {
+            this.updateOpponentStatus(data);
         });
 
         this.socket.on('game_over', (data) => {
@@ -361,40 +480,266 @@ class TicTacToeGame {
         });
 
         // Chat event listeners
-        document.getElementById('chatFloatBtn').addEventListener('click', () => {
+        document.getElementById('chatFloatBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
             this.toggleChat();
         });
 
-        document.getElementById('chatCloseBtn').addEventListener('click', () => {
+        document.getElementById('chatCloseBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
             this.closeChat();
         });
 
-        document.getElementById('chatSendBtn').addEventListener('click', () => {
+        document.getElementById('chatSendBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
             this.sendChatMessage();
         });
 
-        document.getElementById('chatInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.sendChatMessage();
+        document.querySelectorAll('.quick-action').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.sendQuickAction(btn.dataset.action);
+                this.hideQuickActions();
+            });
+        });
+
+        const emojiBtn = document.getElementById('emojiBtn');
+        const emojiToggle = document.getElementById('emojiToggle');
+
+        if (emojiBtn) {
+            emojiBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Emoji button clicked');
+                this.toggleEmojiPicker();
+            });
+        }
+
+        if (emojiToggle) {
+            emojiToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Emoji toggle clicked');
+                this.toggleEmojiPicker();
+            });
+        }
+
+        // Settings button functionality
+        const chatSettings = document.getElementById('chatSettings');
+        if (chatSettings) {
+            chatSettings.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Settings clicked');
+                this.toggleChatSettings();
+            });
+        }
+
+        // chat input handling
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) {
+            chatInput.addEventListener('input', (e) => {
+                this.handleInputChange(e);
+                this.updateCharCount();
+            });
+
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && this.chatSettings.enterToSend) {
+                    e.preventDefault();
+                    this.sendChatMessage();
+                }
+            });
+
+            chatInput.addEventListener('input', () => {
+                this.autoResizeTextarea(chatInput);
+            });
+        }
+
+        // Quick actions
+        const attachBtn = document.getElementById('attachBtn');
+        if (attachBtn) {
+            attachBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleQuickActions();
+            });
+        }
+
+        // Reply cancel
+        const cancelReply = document.getElementById('cancelReply');
+        if (cancelReply) {
+            cancelReply.addEventListener('click', () => {
+                this.cancelReply();
+            });
+        }
+
+        // Global click handler
+        document.addEventListener('click', (e) => {
+            try {
+                // Close emoji picker
+                if (!e.target.closest('.emoji-picker') &&
+                    !e.target.closest('#emojiBtn') &&
+                    !e.target.closest('#emojiToggle')) {
+                    this.hideEmojiPicker();
+                }
+
+                // Close quick actions
+                if (!e.target.closest('.quick-actions-menu') &&
+                    !e.target.closest('#attachBtn')) {
+                    this.hideQuickActions();
+                }
+
+                // Close context menu
+                if (!e.target.closest('.message-context-menu')) {
+                    this.hideContextMenu();
+                }
+
+                // Close settings menu
+                if (!e.target.closest('.chat-settings-menu') &&
+                    !e.target.closest('#chatSettings')) {
+                    this.hideChatSettings();
+                }
+            } catch (error) {
+                console.log('Error in global click handler:', error);
             }
         });
 
         // Typing indicators
         let typingTimer;
-        document.getElementById('chatInput').addEventListener('input', () => {
-            if (this.playerInfo.roomId) {
-                this.socket.emit('typing', { room_id: this.playerInfo.roomId });
-                
-                clearTimeout(typingTimer);
-                typingTimer = setTimeout(() => {
-                    this.socket.emit('stop_typing', { room_id: this.playerInfo.roomId });
-                }, 1000);
-            }
-        });
+        if (chatInput) {
+            chatInput.addEventListener('input', () => {
+                if (this.playerInfo.roomId && chatInput.value.trim()) {
+                    this.socket.emit('typing', { room_id: this.playerInfo.roomId });
 
+                    clearTimeout(typingTimer);
+                    typingTimer = setTimeout(() => {
+                        this.socket.emit('stop_typing', { room_id: this.playerInfo.roomId });
+                    }, 1500);
+                }
+            });
+        }
 
-        // Initialize grid size display
         this.updateGridSizeDisplay(3);
+    }
+
+
+    toggleChatSettings() {
+        console.log('Toggling chat settings');
+
+        // Hide other menus first
+        this.hideEmojiPicker();
+        this.hideQuickActions();
+        this.hideContextMenu();
+
+        let settingsMenu = document.getElementById('chatSettingsMenu');
+
+        if (!settingsMenu) {
+            this.createChatSettingsMenu();
+            settingsMenu = document.getElementById('chatSettingsMenu');
+        }
+
+        const isActive = settingsMenu.classList.contains('active');
+
+        if (isActive) {
+            this.hideChatSettings();
+        } else {
+            this.showChatSettings();
+        }
+    }
+
+    // Create Chat Settings Menu
+    createChatSettingsMenu() {
+        console.log('Creating chat settings menu');
+        const chatHeader = document.querySelector('.chat-header');
+
+        const settingsMenu = document.createElement('div');
+        settingsMenu.id = 'chatSettingsMenu';
+        settingsMenu.className = 'chat-settings-menu';
+        settingsMenu.innerHTML = `
+            <div class="settings-item">
+                <span>Enter to Send</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="enterToSendToggle" ${this.chatSettings.enterToSend ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="settings-item">
+                <span>Sound Notifications</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="soundNotificationsToggle" ${this.chatSettings.soundEnabled ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="settings-item">
+                <span>Clear Chat History</span>
+                <button class="clear-chat-btn">
+                    <i class="fas fa-trash"></i>
+                    Clear
+                </button>
+            </div>
+        `;
+
+        chatHeader.appendChild(settingsMenu);
+
+        // Event listeners for settings
+        setTimeout(() => {
+            document.getElementById('enterToSendToggle').addEventListener('change', (e) => {
+                this.chatSettings.enterToSend = e.target.checked;
+                localStorage.setItem('chatSettings', JSON.stringify(this.chatSettings));
+                this.showNotification(e.target.checked ? 'Enter to send enabled' : 'Enter to send disabled', 'info');
+            });
+
+            document.getElementById('soundNotificationsToggle').addEventListener('change', (e) => {
+                this.chatSettings.soundEnabled = e.target.checked;
+                localStorage.setItem('chatSettings', JSON.stringify(this.chatSettings));
+                this.showNotification(e.target.checked ? 'Sound notifications enabled' : 'Sound notifications disabled', 'info');
+            });
+
+            settingsMenu.querySelector('.clear-chat-btn').addEventListener('click', () => {
+                this.clearChatHistory();
+                this.hideChatSettings();
+                this.showNotification('Chat history cleared', 'success');
+            });
+        }, 100);
+    }
+
+    // Chat Settings Menu
+    showChatSettings() {
+        console.log('Showing chat settings');
+        const settingsMenu = document.getElementById('chatSettingsMenu');
+        if (settingsMenu) {
+            settingsMenu.classList.add('active');
+        }
+    }
+
+    hideChatSettings() {
+        const settingsMenu = document.getElementById('chatSettingsMenu');
+        if (settingsMenu) {
+            settingsMenu.classList.remove('active');
+        }
+    }
+
+    hideContextMenu() {
+        const contextMenu = document.getElementById('messageContextMenu');
+        if (contextMenu) {
+            contextMenu.classList.remove('active');
+        }
+    }
+
+    hideContextMenus() {
+        this.hideContextMenu();
+        this.hideEmojiPicker();
+        this.hideQuickActions();
+        this.hideChatSettings();
+    }
+
+    clearChatHistory() {
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.innerHTML = `
+            <div class="chat-welcome">
+                <div class="welcome-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h4>Start Chatting!</h4>
+                <p>Send a message to begin the conversation</p>
+            </div>
+        `;
     }
 
 
@@ -402,22 +747,24 @@ class TicTacToeGame {
     toggleChat() {
         const chatPanel = document.getElementById('chatPanel');
         const chatBtn = document.getElementById('chatFloatBtn');
-        
+
         this.chatOpen = !this.chatOpen;
-        
+
         if (this.chatOpen) {
             chatPanel.classList.add('active');
             chatBtn.style.transform = 'scale(0.9)';
             this.unreadMessages = 0;
             this.updateChatBadge();
-            
-            // Focus on input
+            this.updateOpponentInfo();
+
+            // Focus on input with slight delay
             setTimeout(() => {
                 document.getElementById('chatInput').focus();
             }, 300);
         } else {
             chatPanel.classList.remove('active');
             chatBtn.style.transform = 'scale(1)';
+            this.hideContextMenus();
         }
     }
 
@@ -425,74 +772,293 @@ class TicTacToeGame {
         this.chatOpen = false;
         document.getElementById('chatPanel').classList.remove('active');
         document.getElementById('chatFloatBtn').style.transform = 'scale(1)';
+        this.hideContextMenus();
     }
 
     sendChatMessage() {
         const input = document.getElementById('chatInput');
         const message = input.value.trim();
-        
+
         if (!message || !this.playerInfo.roomId) return;
-        
-        this.socket.emit('chat_message', {
+
+        const messageData = {
             room_id: this.playerInfo.roomId,
-            message: message
-        });
-        
+            message: message,
+            type: 'text'
+        };
+
+        // Add reply data if replying
+        if (this.replyingTo) {
+            messageData.reply_to = this.replyingTo;
+        }
+
+        this.socket.emit('chat_message', messageData);
+
         input.value = '';
-        
-        // Stop typing indicator
+        this.updateCharCount();
+        this.autoResizeTextarea(input);
+        this.cancelReply();
+
         this.socket.emit('stop_typing', { room_id: this.playerInfo.roomId });
     }
 
     addChatMessage(data) {
+        console.log('Adding chat message with data:', data);
+
         const chatMessages = document.getElementById('chatMessages');
         const messageElement = document.createElement('div');
-        
+
         // Remove welcome message if it exists
         const welcomeMsg = chatMessages.querySelector('.chat-welcome');
         if (welcomeMsg) {
             welcomeMsg.remove();
         }
-        
+
         const isOwnMessage = data.player_id === this.playerInfo.id;
         const isSystemMessage = data.type === 'system';
-        
+
+        console.log('Message info:', {
+            isOwnMessage,
+            currentPlayerId: this.playerInfo.id,
+            messagePlayerId: data.player_id,
+            playerName: data.player_name
+        });
+
+        messageElement.className = `chat-message ${isOwnMessage ? 'own' : 'other'}${isSystemMessage ? ' system' : ''}`;
+        messageElement.setAttribute('data-message-id', data.message_id || Date.now());
+
         if (isSystemMessage) {
-            messageElement.className = 'chat-message system';
-            messageElement.innerHTML = `<p class="chat-message-content">${data.message}</p>`;
-        } else {
-            messageElement.className = `chat-message ${isOwnMessage ? 'own' : 'other'}`;
-            
-            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            
             messageElement.innerHTML = `
-                <div class="chat-message-info">${isOwnMessage ? 'You' : data.player_name} • ${timestamp}</div>
-                <p class="chat-message-content">${this.escapeHtml(data.message)}</p>
+                <div class="message-bubble">
+                    <p class="message-content">${data.message}</p>
+                </div>
             `;
+        } else {
+            const timestamp = new Date(data.timestamp * 1000).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            let replyHtml = '';
+            if (data.reply_to) {
+                replyHtml = `
+                    <div class="message-reply">
+                        <div class="reply-author">${data.reply_to.author}</div>
+                        <div class="reply-text">${data.reply_to.message.substring(0, 50)}${data.reply_to.message.length > 50 ? '...' : ''}</div>
+                    </div>
+                `;
+            }
+
+            // Show sender name only for other player's messages
+            let senderNameHtml = '';
+            if (!isOwnMessage) {
+                senderNameHtml = `<div class="message-sender">${data.player_name}</div>`;
+            }
+
+            messageElement.innerHTML = `
+                <div class="message-bubble">
+                    ${senderNameHtml}
+                    ${replyHtml}
+                    <p class="message-content">${this.parseMessageContent(data.message)}</p>
+                </div>
+                <div class="message-info">
+                    <span class="message-time">${timestamp}</span>
+                    ${isOwnMessage ? `
+                        <div class="message-status">
+                            <i class="fas fa-check" title="Sent"></i>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="message-reactions" data-message-id="${data.message_id || Date.now()}"></div>
+                
+                <!-- Message Actions -->
+                <div class="message-actions">
+                    <button class="message-action-btn reply-btn" title="Reply">
+                        <i class="fas fa-reply"></i>
+                    </button>
+                    <button class="message-action-btn more-btn" title="More">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                </div>
+            `;
+
+            this.setupMessageHandlers(messageElement, data, isSystemMessage);
         }
-        
+
         chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+        this.scrollToBottom();
+
         // Play sound for other player's messages
-        if (!isOwnMessage && !isSystemMessage) {
+        if (!isOwnMessage && !isSystemMessage && this.chatSettings.soundEnabled) {
             this.audioManager.play('notification');
         }
     }
 
+
+
+    setupMessageHandlers(messageElement, data, isSystemMessage) {
+        if (isSystemMessage) return;
+
+        // Hover functionality for message actions
+        messageElement.addEventListener('mouseenter', () => {
+            const actions = messageElement.querySelector('.message-actions');
+            if (actions) actions.classList.add('visible');
+        });
+
+        messageElement.addEventListener('mouseleave', () => {
+            const actions = messageElement.querySelector('.message-actions');
+            if (actions) actions.classList.remove('visible');
+        });
+
+        // Reply button functionality
+        const replyBtn = messageElement.querySelector('.reply-btn');
+        if (replyBtn) {
+            replyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.startReply(data);
+            });
+        }
+
+        // More button (three dots) functionality
+        const moreBtn = messageElement.querySelector('.more-btn');
+        if (moreBtn) {
+            moreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showMessageContextMenu(e, messageElement, data);
+            });
+        }
+
+        // Context menu on right-click
+        messageElement.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.showMessageContextMenu(e, messageElement, data);
+        });
+
+        // Mobile long press
+        let touchTimer;
+        messageElement.addEventListener('touchstart', (e) => {
+            touchTimer = setTimeout(() => {
+                this.showMessageContextMenu(e, messageElement, data);
+            }, 500);
+        });
+
+        messageElement.addEventListener('touchend', () => {
+            clearTimeout(touchTimer);
+        });
+
+        // Swipe to reply (mobile)
+        this.addSwipeToReply(messageElement, data);
+    }
+
+    // Swipe to reply functionality
+    addSwipeToReply(messageElement, messageData) {
+        let startX, startY, currentX, currentY;
+        let isSwiping = false;
+        let swipeThreshold = 50; // minimum swipe distance
+
+        messageElement.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            isSwiping = false;
+        });
+
+        messageElement.addEventListener('touchmove', (e) => {
+            if (!startX || !startY) return;
+
+            currentX = e.touches[0].clientX;
+            currentY = e.touches[0].clientY;
+
+            const diffX = startX - currentX;
+            const diffY = startY - currentY;
+
+            // Only consider horizontal swipes
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+                isSwiping = true;
+                e.preventDefault();
+
+                // Add visual feedback for swipe
+                if (diffX > 0 && diffX < 100) { // Swipe left
+                    messageElement.style.transform = `translateX(-${Math.min(diffX, 80)}px)`;
+                    messageElement.style.opacity = 1 - (diffX / 200);
+                }
+            }
+        });
+
+        messageElement.addEventListener('touchend', (e) => {
+            if (isSwiping) {
+                const diffX = startX - currentX;
+
+                if (diffX > swipeThreshold) {
+                    // Swipe left to reply
+                    this.startReply(messageData);
+                    this.showSwipeReplyFeedback();
+                }
+
+                // Reset position
+                messageElement.style.transform = '';
+                messageElement.style.opacity = '';
+            }
+
+            startX = null;
+            startY = null;
+            isSwiping = false;
+        });
+    }
+
+    showSwipeReplyFeedback() {
+        const chatMessages = document.getElementById('chatMessages');
+        const feedback = document.createElement('div');
+        feedback.className = 'swipe-feedback';
+        feedback.innerHTML = '<i class="fas fa-reply"></i> Reply';
+
+        chatMessages.appendChild(feedback);
+
+        setTimeout(() => {
+            feedback.remove();
+        }, 1000);
+    }
+
+    parseMessageContent(message) {
+        // Convert emojis and format text
+        let parsed = this.escapeHtml(message);
+
+        // Convert :emoji: format to actual emojis
+        parsed = parsed.replace(/:([a-zA-Z0-9_]+):/g, (match, name) => {
+            const emoji = this.getEmojiByName(name);
+            return emoji || match;
+        });
+
+        // Convert URLs to links
+        parsed = parsed.replace(
+            /(https?:\/\/[^\s]+)/g,
+            '<a href="$1" target="_blank" rel="noopener">$1</a>'
+        );
+
+        return parsed;
+    }
+
     showTypingIndicator(playerName) {
         const chatMessages = document.getElementById('chatMessages');
-        
-        // Remove existing typing indicator
+
+        // Remove existing typing indicator first
         this.hideTypingIndicator();
-        
+
         const typingElement = document.createElement('div');
         typingElement.className = 'chat-typing-indicator';
         typingElement.id = 'typingIndicator';
-        typingElement.textContent = `${playerName} is typing...`;
-        
+        typingElement.innerHTML = `
+            <div class="typing-content">
+                <span class="typing-text">${playerName} is typing</span>
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        `;
+
         chatMessages.appendChild(typingElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        this.scrollToBottom();
     }
 
     hideTypingIndicator() {
@@ -504,26 +1070,436 @@ class TicTacToeGame {
 
     updateChatBadge() {
         const badge = document.getElementById('chatBadge');
-        
+
         if (this.unreadMessages > 0) {
-            badge.textContent = this.unreadMessages > 9 ? '9+' : this.unreadMessages;
+            badge.textContent = this.unreadMessages > 99 ? '99+' : this.unreadMessages;
             badge.style.display = 'flex';
         } else {
             badge.style.display = 'none';
         }
     }
 
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    showChatNotification(data) {
+        if (data.type === 'system') return;
+
+        const notification = document.createElement('div');
+        notification.className = 'chat-notification';
+        notification.innerHTML = `
+            <div class="notification-avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="notification-content">
+                <div class="notification-sender">${data.player_name}</div>
+                <div class="notification-message">${data.message.substring(0, 50)}${data.message.length > 50 ? '...' : ''}</div>
+            </div>
+        `;
+
+        document.body.appendChild(notification);
+
+        // Animate in
+        setTimeout(() => notification.classList.add('show'), 100);
+
+        // Remove after 4 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => document.body.removeChild(notification), 300);
+        }, 4000);
+    }
+
+    // Emoji System
+    initializeEmojis() {
+        console.log('Initializing emojis');
+        this.emojiCategories = {
+            recent: this.recentEmojis,
+            smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔'],
+            gestures: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏'],
+            activities: ['🎮', '🕹️', '🎯', '🎲', '🃏', '🎭', '🎨', '🏆', '🏅', '🥇', '🥈', '🥉', '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🏓', '🏸', '🏒'],
+            objects: ['📱', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '📷', '📸', '📻', '🎙️', '⏰', '🕰️', '⏳', '⌛', '💡', '🔦', '🕯️', '📡', '🔋', '🔌']
+        };
+
+        this.populateEmojiGrid('recent');
+    }
+
+    toggleEmojiPicker() {
+        console.log('Toggling emoji picker');
+        const emojiPicker = document.getElementById('emojiPicker');
+        const isActive = emojiPicker.classList.contains('active');
+
+        // Hide other menus
+        this.hideQuickActions();
+        this.hideContextMenu();
+        this.hideChatSettings();
+
+        if (isActive) {
+            this.hideEmojiPicker();
+        } else {
+            this.showEmojiPicker();
+        }
+    }
+
+    showEmojiPicker() {
+        console.log('Showing emoji picker');
+        const emojiPicker = document.getElementById('emojiPicker');
+
+        // Hide other menus first
+        this.hideQuickActions();
+        this.hideContextMenu();
+        this.hideChatSettings();
+
+        emojiPicker.classList.add('active');
+
+        // Ensure emojis are populated
+        if (!this.emojiCategories) {
+            this.initializeEmojis();
+        }
+
+        this.populateEmojiGrid('recent');
+        this.setupEmojiListeners();
+
+        // Ensure emoji picker stays within chat panel bounds
+        setTimeout(() => {
+            const chatPanel = document.getElementById('chatPanel');
+            const emojiRect = emojiPicker.getBoundingClientRect();
+            const panelRect = chatPanel.getBoundingClientRect();
+
+            // Adjust position if overflowing
+            if (emojiRect.top < panelRect.top) {
+                emojiPicker.style.bottom = '70px';
+                emojiPicker.style.top = 'auto';
+            }
+        }, 50);
+    }
+
+    hideEmojiPicker() {
+        const emojiPicker = document.getElementById('emojiPicker');
+        if (emojiPicker) {
+            emojiPicker.classList.remove('active');
+        }
+    }
+
+    setupEmojiListeners() {
+        // Remove old listeners
+        document.querySelectorAll('.emoji-category').forEach(btn => {
+            btn.replaceWith(btn.cloneNode(true));
+        });
+
+        // New listeners
+        document.querySelectorAll('.emoji-category').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.populateEmojiGrid(btn.dataset.category);
+            });
+        });
+    }
+
+    populateEmojiGrid(category) {
+        console.log('Populating emoji grid for category:', category);
+        const emojiGrid = document.getElementById('emojiGrid');
+        const emojis = this.emojiCategories[category] || [];
+
+        // Update active category
+        document.querySelectorAll('.emoji-category').forEach(btn => btn.classList.remove('active'));
+        const activeBtn = document.querySelector(`[data-category="${category}"]`);
+        if (activeBtn) {
+            activeBtn.classList.add('active');
+        }
+
+        emojiGrid.innerHTML = '';
+
+        if (emojis.length === 0 && category === 'recent') {
+            emojiGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); font-size: 0.9rem; padding: 20px;">No recent emojis</div>';
+            return;
+        }
+
+        emojis.forEach(emoji => {
+            const emojiBtn = document.createElement('button');
+            emojiBtn.className = 'emoji-item';
+            emojiBtn.textContent = emoji;
+            emojiBtn.title = emoji;
+            emojiBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.insertEmoji(emoji);
+            });
+            emojiGrid.appendChild(emojiBtn);
+        });
+
+        this.setupEmojiListeners();
+    }
+
+    insertEmoji(emoji) {
+        console.log('Inserting emoji:', emoji);
+        const input = document.getElementById('chatInput');
+        if (!input) return;
+
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        const text = input.value;
+
+        input.value = text.substring(0, start) + emoji + text.substring(end);
+        input.selectionStart = input.selectionEnd = start + emoji.length;
+        input.focus();
+
+        // Add to recent emojis
+        this.addToRecentEmojis(emoji);
+        this.updateCharCount();
+        this.autoResizeTextarea(input);
+        this.hideEmojiPicker();
+    }
+
+    addToRecentEmojis(emoji) {
+        this.recentEmojis = this.recentEmojis.filter(e => e !== emoji);
+        this.recentEmojis.unshift(emoji);
+        this.recentEmojis = this.recentEmojis.slice(0, 32);
+        localStorage.setItem('recentEmojis', JSON.stringify(this.recentEmojis));
+        this.emojiCategories.recent = this.recentEmojis;
+    }
+
+    // Quick Actions
+    toggleQuickActions() {
+        const quickActionsMenu = document.getElementById('quickActionsMenu');
+        const isActive = quickActionsMenu.classList.contains('active');
+
+        this.hideEmojiPicker();
+        this.hideContextMenu();
+
+        if (isActive) {
+            this.hideQuickActions();
+        } else {
+            this.showQuickActions();
+        }
+    }
+
+    showQuickActions() {
+        const quickActionsMenu = document.getElementById('quickActionsMenu');
+        quickActionsMenu.classList.add('active');
+    }
+
+    hideQuickActions() {
+        document.getElementById('quickActionsMenu').classList.remove('active');
+    }
+
+    sendQuickAction(action) {
+        const messages = {
+            gg: 'Good game! 🎮',
+            gl: 'Good luck! ⭐',
+            nice: 'Nice move! 👍',
+            thinking: 'Let me think... 🤔'
+        };
+
+        const message = messages[action];
+        if (message && this.playerInfo.roomId) {
+            this.socket.emit('chat_message', {
+                room_id: this.playerInfo.roomId,
+                message: message,
+                type: 'quick_action'
+            });
+        }
+    }
+
+    // Message Context Menu
+    showMessageContextMenu(event, messageElement, messageData) {
+        const contextMenu = document.getElementById('messageContextMenu');
+
+        // Position the menu
+        const rect = document.getElementById('chatPanel').getBoundingClientRect();
+        const x = Math.min(event.clientX - rect.left, rect.width - 150);
+        const y = Math.min(event.clientY - rect.top, rect.height - 120);
+
+        contextMenu.style.left = x + 'px';
+        contextMenu.style.top = y + 'px';
+        contextMenu.classList.add('active');
+
+        // Remove old listeners
+        const oldItems = contextMenu.querySelectorAll('.context-menu-item');
+        oldItems.forEach(item => item.replaceWith(item.cloneNode(true)));
+
+        // New event listeners
+        document.querySelectorAll('.context-menu-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.handleContextMenuAction(item.dataset.action, messageElement, messageData);
+                this.hideContextMenu();
+            });
+        });
+    }
+
+    handleContextMenuAction(action, messageElement, messageData) {
+        switch (action) {
+            case 'copy':
+                navigator.clipboard.writeText(messageData.message).then(() => {
+                    this.showNotification('Message copied to clipboard', 'success');
+                });
+                break;
+            case 'reply':
+                this.startReply(messageData);
+                break;
+            case 'react':
+                // NOTE By Bismaya: For now, let's just show a notification. I am gonna add later
+                this.showNotification('Reactions coming soon!', 'info');
+                break;
+        }
+    }
+
+    startReply(messageData) {
+        this.replyingTo = {
+            id: messageData.message_id || Date.now(),
+            author: messageData.player_name,
+            message: messageData.message
+        };
+
+        const replyPreview = document.getElementById('replyPreview');
+        document.getElementById('replyToName').textContent = messageData.player_name;
+        document.getElementById('replyMessage').textContent = messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : '');
+
+        replyPreview.style.display = 'flex';
+        document.getElementById('chatInput').focus();
+    }
+
+    cancelReply() {
+        this.replyingTo = null;
+        document.getElementById('replyPreview').style.display = 'none';
+    }
+
+    // Utility Functions
+    autoResizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 80) + 'px';
+    }
+
+    updateCharCount() {
+        const input = document.getElementById('chatInput');
+        const counter = document.getElementById('charCount');
+        const count = input.value.length;
+        counter.textContent = `${count}/500`;
+
+        if (count > 450) {
+            counter.style.color = 'var(--error-color)';
+        } else {
+            counter.style.color = 'var(--text-secondary)';
+        }
+    }
+
+    handleInputChange(event) {
+        const sendBtn = document.getElementById('chatSendBtn');
+        sendBtn.disabled = !event.target.value.trim();
+    }
+
+    scrollToBottom() {
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    findOpponent() {
+        if (!this.gameState || !this.gameState.players) {
+            console.log('❌ No game state or players available');
+            return null;
+        }
+
+        // Using Object.entries to get both player ID (key) and player data (value)
+        const playersEntries = Object.entries(this.gameState.players);
+        console.log('🔍 Looking for opponent among players:', playersEntries);
+        console.log('🔍 Current player identifiers:', {
+            socketId: this.socket.id,
+            playerInfoId: this.playerInfo.id,
+            playerName: this.playerInfo.name
+        });
+
+        const currentSocketId = this.socket.id;
+
+        // Find opponent by checking the key (player ID) from entries
+        const opponentEntry = playersEntries.find(([playerId, playerData]) => {
+            console.log(`🔍 Checking player: Key=${playerId}, Name=${playerData.name}, Symbol=${playerData.symbol}`);
+            console.log(`🔍 Is this current player? ${playerId === currentSocketId}`);
+            return playerId !== currentSocketId; // Use the key (player ID) for comparison
+        });
+
+        if (opponentEntry && playersEntries.length === 2) {
+            const [opponentId, opponentData] = opponentEntry;
+            // Ensure the opponent data has the ID property
+            const opponent = {
+                ...opponentData,
+                id: opponentId // ... bla bla bla
+            };
+            console.log('✅ Found opponent:', opponent);
+            return opponent;
+        }
+
+        console.log('❌ No opponent found or waiting for second player');
+        return null;
+    }
+
+
+    updateOpponentInfo() {
+        // this.logPlayerInfo(); // Uncomment if you want to log player info
+
+        const opponent = this.findOpponent();
+
+        if (opponent) {
+            const opponentNameEl = document.getElementById('opponentName');
+            const lastSeenEl = document.getElementById('lastSeen');
+            const onlineIndicatorEl = document.getElementById('onlineIndicator');
+            const avatarEl = document.getElementById('opponentAvatar');
+
+            if (opponentNameEl) {
+                opponentNameEl.textContent = opponent.name || 'Opponent';
+                console.log('✅ Updated chat header to show opponent:', opponent.name);
+            }
+
+            if (lastSeenEl) {
+                lastSeenEl.textContent = 'Online';
+                lastSeenEl.style.color = '#34c759';
+            }
+
+            if (onlineIndicatorEl) {
+                onlineIndicatorEl.classList.add('visible');
+            }
+
+            if (avatarEl && opponent.name) {
+                avatarEl.textContent = opponent.name.charAt(0).toUpperCase();
+                avatarEl.style.color = 'white';
+                avatarEl.style.fontSize = '1.1rem';
+                avatarEl.style.fontWeight = '600';
+            } else if (avatarEl) {
+                avatarEl.innerHTML = '<i class="fas fa-user"></i>';
+                avatarEl.style.color = 'white';
+            }
+
+            console.log('✅ Successfully updated opponent info in chat header');
+            console.log(`✅ Chat header should now show: "${opponent.name}"`);
+        } else {
+            console.log('❌ No opponent found, showing default state');
+
+            const opponentNameEl = document.getElementById('opponentName');
+            const lastSeenEl = document.getElementById('lastSeen');
+            const onlineIndicatorEl = document.getElementById('onlineIndicator');
+            const avatarEl = document.getElementById('opponentAvatar');
+
+            if (opponentNameEl) opponentNameEl.textContent = 'Waiting for opponent...';
+            if (lastSeenEl) {
+                lastSeenEl.textContent = 'Offline';
+                lastSeenEl.style.color = 'var(--text-secondary)';
+            }
+            if (onlineIndicatorEl) onlineIndicatorEl.classList.remove('visible');
+            if (avatarEl) {
+                avatarEl.innerHTML = '<i class="fas fa-user"></i>';
+                avatarEl.style.color = 'white';
+            }
+        }
+    }
+
+    updateOpponentStatus(data) {
+        if (data.player_id !== this.playerInfo.id) {
+            document.getElementById('lastSeen').textContent = data.status === 'online' ? 'Online' : `Last seen ${data.last_seen}`;
+            document.getElementById('onlineIndicator').style.display = data.status === 'online' ? 'block' : 'none';
+        }
     }
 
     // Add system message when game events happen
     addSystemMessage(message) {
         this.addChatMessage({
             type: 'system',
-            message: message
+            message: message,
+            timestamp: Date.now() / 1000
         });
     }
 
@@ -685,9 +1661,11 @@ class TicTacToeGame {
         this.updateScoreboard();
         this.updateTurnIndicator(this.gameState.current_turn);
         document.getElementById('gameRoomCode').textContent = this.playerInfo.roomId;
-        
-        this.addSystemMessage('Game started! Good luck! 🎮');
-        
+
+        // Fix chat initialization
+        this.updateOpponentInfo();
+        this.addSystemMessage('🎮 Game started! May the best player win!');
+
         this.showScreen('gameScreen');
     }
 
@@ -838,13 +1816,13 @@ class TicTacToeGame {
 
     handleGameOver(data) {
         if (data.is_draw) {
-            // No specific sound for draw currently, maybe play a neutral sound (I'll use later after getting feedback)
+            this.addSystemMessage("🤝 It's a draw! Well played both!");
         } else if (data.winner === this.playerInfo.symbol) {
             this.audioManager.play('win');
-            this.addSystemMessage('You won this round! 🏆');
+            this.addSystemMessage('🏆 Congratulations! You won this round!');
         } else {
             this.audioManager.play('loss');
-            this.addSystemMessage('You lost this round. Better luck next time! 💪');
+            this.addSystemMessage('💪 Good effort! Better luck next time!');
         }
 
         // Highlight winning line if exists
@@ -855,7 +1833,6 @@ class TicTacToeGame {
             });
         }
 
-        // Update info after game over
         setTimeout(() => {
             this.updateScoreboard();
         }, 500);
@@ -998,7 +1975,7 @@ class TicTacToeGame {
             symbol: '',
             roomId: ''
         };
-        
+
         // Reset chat
         this.chatOpen = false;
         this.unreadMessages = 0;
@@ -1006,13 +1983,35 @@ class TicTacToeGame {
         this.closeChat();
         document.getElementById('chatMessages').innerHTML = `
             <div class="chat-welcome">
-                <i class="fas fa-hand-wave"></i>
-                <p>Chat with your opponent!</p>
+                <div class="welcome-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h4>Start Chatting!</h4>
+                <p>Send a message to begin the conversation</p>
             </div>
         `;
-        
+
         this.hideGameOverModal();
         this.showScreen('menuScreen');
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    getEmojiByName(name) {
+        // Simple emoji name mapping
+        const emojiMap = {
+            'smile': '😊',
+            'laugh': '😂',
+            'heart': '❤️',
+            'thumbsup': '👍',
+            'fire': '🔥',
+            'game': '🎮'
+        };
+        return emojiMap[name.toLowerCase()];
     }
 
     // Utility functions
@@ -1091,8 +2090,67 @@ const slideOutKeyframes = `
 }
 `;
 
+const chatNotificationCSS = `
+.chat-notification {
+    position: fixed;
+    top: 80px;
+    right: 30px;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 16px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 300px;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+}
+
+.chat-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.notification-avatar {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #0088cc, #00a8e6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-sender {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.notification-message {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+`;
+
 const style = document.createElement('style');
-style.textContent = slideOutKeyframes;
+style.textContent += chatNotificationCSS;
 document.head.appendChild(style);
 
 document.addEventListener('DOMContentLoaded', () => {

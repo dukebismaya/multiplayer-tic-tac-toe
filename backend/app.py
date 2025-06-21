@@ -14,7 +14,7 @@ import os
 app = Flask(__name__, static_folder='../frontend', static_url_path='/')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-fallback-secret-key-here')
 
-# Python 3.13 compatibility
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 CORS(app)
 
@@ -81,31 +81,74 @@ def handle_join_room(data):
         emit('error', {'message': 'Room ID required'})
         return
     
+    print(f"Player {player_name} ({request.sid}) trying to join room {room_id}")
+    
     result = game_manager.join_room(room_id, request.sid, player_name)
     if result['success']:
         join_room(room_id)
         
-        # Notify the joining player
+        # Get the current game state after joining
+        current_game_state = game_manager.get_game_state(room_id)
+        
+        print(f"Game state after join: {current_game_state}")
+        
+        # Notify the joining player with updated game state
         emit('room_joined', {
             'room_id': room_id,
             'player_id': request.sid,
             'player_name': player_name,
             'symbol': result['symbol'],
             'opponent': result['opponent'],
-            'game_state': result['game_state']
+            'game_state': current_game_state
         })
         
-        # Notify existing player
+        # Notify existing player with updated game state
         emit('player_joined', {
             'player_name': player_name,
             'symbol': result['symbol'],
-            'game_ready': True
+            'game_ready': True,
+            'game_state': current_game_state
         }, room=room_id, include_self=False)
         
-        # Start the game
-        emit('game_start', result['game_state'], room=room_id)
+        # Start the game with the most current state
+        emit('game_start', current_game_state, room=room_id)
+        
+        print(f"Successfully processed join for {player_name}")
     else:
         emit('error', {'message': result['message']})
+        
+@socketio.on('room_joined')
+def handle_room_joined_update():
+    # After a player joins, send updated player info to both players
+    pass
+
+@socketio.on('get_player_info')
+def handle_get_player_info(data):
+    room_id = data.get('room_id')
+    
+    if not room_id:
+        emit('error', {'message': 'Room ID required'})
+        return
+    
+    game = game_manager.games.get(room_id)
+    if not game:
+        emit('error', {'message': 'Room not found'})
+        return
+    
+    # Send current player info
+    players_info = []
+    for player_id, player_data in game.players.items():
+        players_info.append({
+            'id': player_id,
+            'name': player_data['name'],
+            'symbol': player_data['symbol'],
+            'online': True  # For now, assume online, I'll handle it later.
+        })
+    
+    emit('player_info_update', {
+        'players': players_info,
+        'requesting_player': request.sid
+    })
 
 @socketio.on('make_move')
 def handle_make_move(data):
@@ -165,6 +208,7 @@ def handle_restart_game(data):
 def handle_chat_message(data):
     room_id = data.get('room_id')
     message = data.get('message', '').strip()
+    reply_to = data.get('reply_to')
     
     if not room_id or not message:
         emit('error', {'message': 'Invalid chat message'})
@@ -178,13 +222,22 @@ def handle_chat_message(data):
     
     player = game.players[request.sid]
     
-    # Broadcast the message to all players in the room
-    emit('chat_message', {
+    # Create message data
+    message_data = {
+        'message_id': str(uuid.uuid4()),
         'player_id': request.sid,
         'player_name': player['name'],
         'message': message,
-        'timestamp': time.time()
-    }, room=room_id)
+        'timestamp': time.time(),
+        'type': data.get('type', 'text')
+    }
+    
+    # Add reply data if present
+    if reply_to:
+        message_data['reply_to'] = reply_to
+    
+    # Broadcast the message to all players in the room
+    emit('chat_message', message_data, room=room_id)
 
 @socketio.on('typing')
 def handle_typing(data):

@@ -75,12 +75,10 @@ class Game:
             self.game_over = True
             self.winner = winner_result['symbol']
             self.winning_line = winner_result['line']
-            # Update scores when game ends with winner
             self.update_scores(winner_symbol=self.winner)
         elif self.is_board_full():
             self.game_over = True
             self.is_draw = True
-            # Update scores when game ends in draw
             self.update_scores(is_draw=True)
         else:
             # Switch turns
@@ -237,10 +235,18 @@ class Game:
         }
     
     def get_state(self) -> Dict:
+        players_with_ids = {}
+        for player_id, player_data in self.players.items():
+            players_with_ids[player_id] = {
+                'id': player_id,
+                'name': player_data['name'],
+                'symbol': player_data['symbol']
+            }
+        
         return {
             'board': self.board,
             'current_turn': self.current_turn,
-            'players': self.players,
+            'players': players_with_ids,
             'game_over': self.game_over,
             'winner': self.winner,
             'winning_line': self.winning_line,
@@ -374,7 +380,7 @@ class GameManager:
             if player_id in game.players:
                 del game.players[player_id]
                 
-            # Always clean up room when a player disconnects in a 2-player game
+            # clean up room when a player disconnects
             del self.games[room_id]
             
             # Remove remaining player from room mapping

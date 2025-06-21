@@ -245,37 +245,141 @@
                 <div class="chat-float-btn" id="chatFloatBtn">
                     <i class="fas fa-comments"></i>
                     <span class="chat-badge" id="chatBadge" style="display: none;">0</span>
+                    <div class="chat-pulse-ring"></div>
                 </div>
 
                 <!-- Chat Panel -->
                 <div class="chat-panel" id="chatPanel">
+                    <!-- Chat Header -->
                     <div class="chat-header">
-                        <h3>
-                            <i class="fas fa-comments"></i>
-                            Chat
-                        </h3>
-                        <button class="chat-close" id="chatCloseBtn">
+                        <div class="chat-header-info">
+                            <div class="opponent-avatar" id="opponentAvatar">
+                                <i class="fas fa-user"></i>
+                                <div class="online-indicator" id="onlineIndicator"></div>
+                            </div>
+                            <div class="opponent-details">
+                                <h3 id="opponentName">Opponent</h3>
+                                <span class="last-seen" id="lastSeen">Online</span>
+                            </div>
+                        </div>
+                        <div class="chat-header-actions">
+                            <button class="header-action-btn" id="emojiToggle" title="Emojis">
+                                <i class="fas fa-smile"></i>
+                            </button>
+                            <button class="header-action-btn" id="chatSettings" title="Settings">
+                                <i class="fas fa-cog"></i>
+                            </button>
+                            <button class="chat-close" id="chatCloseBtn" title="Close">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Messages Container -->
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-welcome">
+                            <div class="welcome-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <h4>Start Chatting!</h4>
+                            <p>Send a message to begin the conversation</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Reply Preview -->
+                    <div class="reply-preview" id="replyPreview" style="display: none;">
+                        <div class="reply-content">
+                            <div class="reply-header">
+                                <i class="fas fa-reply"></i>
+                                <span class="reply-to">Replying to <strong id="replyToName"></strong></span>
+                            </div>
+                            <div class="reply-message" id="replyMessage"></div>
+                        </div>
+                        <button class="reply-cancel" id="cancelReply">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
                     
-                    <div class="chat-messages" id="chatMessages">
-                        <div class="chat-welcome">
-                            <i class="fas fa-hand-wave"></i>
-                            <p>Chat with your opponent!</p>
+                    <!-- Emoji Picker -->
+                    <div class="emoji-picker" id="emojiPicker">
+                        <div class="emoji-categories">
+                            <button class="emoji-category active" data-category="recent">
+                                <i class="fas fa-clock"></i>
+                            </button>
+                            <button class="emoji-category" data-category="smileys">
+                                😀
+                            </button>
+                            <button class="emoji-category" data-category="gestures">
+                                👋
+                            </button>
+                            <button class="emoji-category" data-category="activities">
+                                🎮
+                            </button>
+                            <button class="emoji-category" data-category="objects">
+                                🎯
+                            </button>
+                        </div>
+                        <div class="emoji-grid" id="emojiGrid">
+                            <!-- Emojis will be populated by JavaScript -->
                         </div>
                     </div>
                     
+                    <!-- Chat Input Area -->
                     <div class="chat-input-area">
                         <div class="chat-input-container">
-                            <input type="text" id="chatInput" placeholder="Type your message..." maxlength="200">
-                            <button id="chatSendBtn" class="chat-send-btn">
+                            <button class="input-action-btn" id="attachBtn" title="Quick Actions">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                            <div class="message-input-wrapper">
+                                <textarea id="chatInput" placeholder="Type a message..." rows="1" maxlength="500"></textarea>
+                                <div class="input-char-count" id="charCount">0/500</div>
+                            </div>
+                            <button class="input-action-btn" id="emojiBtn" title="Emojis">
+                                <i class="fas fa-smile"></i>
+                            </button>
+                            <button id="chatSendBtn" class="chat-send-btn" title="Send">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
+                        
+                        <!-- Quick Actions Menu -->
+                        <div class="quick-actions-menu" id="quickActionsMenu">
+                            <button class="quick-action" data-action="gg">
+                                <i class="fas fa-handshake"></i>
+                                <span>Good Game</span>
+                            </button>
+                            <button class="quick-action" data-action="gl">
+                                <i class="fas fa-star"></i>
+                                <span>Good Luck</span>
+                            </button>
+                            <button class="quick-action" data-action="nice">
+                                <i class="fas fa-thumbs-up"></i>
+                                <span>Nice Move</span>
+                            </button>
+                            <button class="quick-action" data-action="thinking">
+                                <i class="fas fa-brain"></i>
+                                <span>Thinking...</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Message Context Menu -->
+                    <div class="message-context-menu" id="messageContextMenu">
+                        <button class="context-menu-item" data-action="reply">
+                            <i class="fas fa-reply"></i>
+                            <span>Reply</span>
+                        </button>
+                        <button class="context-menu-item" data-action="copy">
+                            <i class="fas fa-copy"></i>
+                            <span>Copy</span>
+                        </button>
+                        <button class="context-menu-item" data-action="react">
+                            <i class="fas fa-heart"></i>
+                            <span>React</span>
+                        </button>
                     </div>
                 </div>
-                
+
             </div>
         </div>
 
